@@ -72,6 +72,7 @@ def listsets():
     xmldoc = parseString(frobxml)
 
 def parse_options(args):
+    #from RBTools. update to handle our options
     parser = OptionParser(usage="%prog [-pond] [-r review_id] [changenum]",
                           version="RBTools ") #FIXME: + get_version_string())
 
