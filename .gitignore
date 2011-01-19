@@ -1,2 +1,3 @@
 pyuploadr/settings.py
 token.xml
+**/*.pyc
