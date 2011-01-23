@@ -24,7 +24,9 @@ def getsignedurl(url, parameters):
 def get(url, parameters):
     final_url = getsignedurl(url, parameters)
     result = openanything.fetch(final_url)
-    print result['status']
-    print result['url']
-    print result['data']
+    print '*********************************'
+    print 'DEBUG: status=' + str(result['status'])
+    print 'DEBUG: url=' + result['url']
+    print 'DEBUG: data=' + result['data']
+    print '*********************************'
     return result
