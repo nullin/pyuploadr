@@ -5,12 +5,14 @@ import sys
 import os
 from optparse import OptionParser
 import utils
+import urllib
 from xml.dom.minidom import parseString
 import ConfigParser
 
 URL_SVC = 'http://api.flickr.com/services/'
 URL_REST = URL_SVC + 'rest/'
 URL_AUTH = URL_SVC + 'auth/'
+URL_UPLOAD = URL_SVC + 'upload/'
 APP_NAME = 'pyUploadr'
 
 options = None
@@ -118,8 +120,6 @@ def adduser():
     
     result = getfrob()
     result = gettoken(result['frob'])
-    #print result
-    #doOperation(result['token'])
 
 def deluser():
     tokenprops = gettokenproperties()
@@ -135,15 +135,20 @@ def deluser():
     else:
         print APP_NAME + ' is not configured with a user currently. No user to delete.'
 
+def uploadphotoset():
+    token = gettokenproperties()['token']
+    parameters = { 'api_key':API_KEY, 'auth_token':token, 'safety_level':'3', 'content_type':'0', 'hidden':'1' }
+    filename = '/Users/nullin/Desktop/dilbert.jpg'
+    respxml = utils.post(URL_UPLOAD, parameters, filename)
+
 def listphotosets(token=None, user_id=None):
     parameters = { 'method':'flickr.photosets.getList', 'api_key':API_KEY }
     if token:
         parameters['auth_token'] = token
     if user_id:
         parameters['user_id'] = user_id
-    print parameters
-    frobxml = utils.get(URL_REST, parameters)['data']
-    xmldoc = parseString(frobxml)
+    respxml = utils.get(URL_REST, parameters)['data']
+    xmldoc = parseString(respxml) #should do something with the response
 
 def parse_options(args):
     #from RBTools. update to handle our options
@@ -156,15 +161,12 @@ def parse_options(args):
     parser.add_option("-d", "--deleteuser",
                       dest="deluser", action="store_true", default=False,
                       help="Removes the current Flickr user")
-    parser.add_option("-u", "--upload",
-                      dest="upload", action="store_true", default=False,
-                      help="Upload photos and videos to Flickr")
     parser.add_option("-l", "--listsets",
                       dest="listsets", action="store_true",
                       default=False,
                       help="Lists the accessible photosets")
     parser.add_option("-u","--upload",
-                      dest="upload", action="store_true", default=False
+                      dest="upload", action="store_true", default=False,
                       help="Upload photos/videos to a new photoset")
 
     (globals()["options"], args) = parser.parse_args(args)
