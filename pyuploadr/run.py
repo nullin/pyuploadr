@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from settings import API_KEY, PERMS, TOKEN_PROP_PATH
+from settings import API_KEY, API_SECRET, PERMS, TOKEN_PROP_PATH
 import sys
 import os
 from optparse import OptionParser
@@ -8,6 +8,8 @@ import utils
 import urllib
 from xml.dom.minidom import parseString
 import ConfigParser
+import flickrapi
+from xml.etree import ElementTree
 
 URL_SVC = 'http://api.flickr.com/services/'
 URL_REST = URL_SVC + 'rest/'
@@ -16,86 +18,11 @@ URL_UPLOAD = URL_SVC + 'upload/'
 APP_NAME = 'pyUploadr'
 
 options = None
+flickr = flickrapi.FlickrAPI(API_KEY, API_SECRET)
 
-def getfrob():
-    parameters = { 'method':'flickr.auth.getFrob', 'api_key':API_KEY }
-    frobxml = utils.get(URL_REST, parameters)['data']
-    xmldoc = parseString(frobxml)
-    
-    result = {}
-    if not xmldoc.getElementsByTagName('frob') == []:
-        result['frob'] = xmldoc.getElementsByTagName('frob')[0].firstChild.nodeValue
-    if not xmldoc.getElementsByTagName('err') == []:
-        result['err'] = xmldoc.getElementsByTagName('err')[0].getAttribute('code')
-    return result
-
-def gettoken(frob):
-    parameters = { 'api_key':API_KEY, 'frob':frob, 'perms':PERMS }
-    url = utils.getsignedurl(URL_AUTH, parameters)
-    
-    print 'Please go to the following URL to allow Flickr to give access to this application:'
-    print url
-    raw_input('Once done, hit any key:')
-    
-    parameters = { 'method':'flickr.auth.getToken', 'api_key':API_KEY, 'frob':frob }
-    frobxml = utils.get(URL_REST, parameters)['data']
-    xmldoc = parseString(frobxml)
-    
-    result = {}
-    error = False
-    if not xmldoc.getElementsByTagName('err') == []:
-        result['code'] = xmldoc.getElementsByTagName('err')[0].getAttribute('code')
-        error = True
-
-    if not xmldoc.getElementsByTagName('token') == []:
-        result['token'] = xmldoc.getElementsByTagName('token')[0].firstChild.nodeValue
-    else:
-        error = True
-    if not xmldoc.getElementsByTagName('perms') == []:
-        result['perms'] = xmldoc.getElementsByTagName('perms')[0].firstChild.nodeValue
-    else:
-        error = True
-    if not xmldoc.getElementsByTagName('user') == []:
-        usertag = xmldoc.getElementsByTagName('user')[0]
-        result['nsid'] = usertag.getAttribute('nsid')
-        result['username'] = usertag.getAttribute('username')
-        result['fullname'] = usertag.getAttribute('fullname')
-    else:
-        error = True
-
-    if error:
-        if result['code']:
-            code = result['code']
-            print 'Flickr returned error code ' + code
-            if code == '108':
-                print 'Did you go to Flickr and authorize ' + APP_NAME + '?'
-            else:
-                print 'Not sure what went wrong. Can you file a bug or ping me?'
-        else:
-            print 'Something went wrong. Flickr returned incomplete information.'
-            print 'Got back following XML from Flickr:\n'
-            print xmldoc.toxml()
-    else:
-        tokenfile = open(TOKEN_PROP_PATH, 'w')
-        tokenfile.write('token=' + result['token'] + '\n')
-        tokenfile.write('perms=' + result['perms'] + '\n')
-        tokenfile.write('nsid=' + result['nsid'] + '\n')
-        tokenfile.write('username=' + result['username'] + '\n')
-        tokenfile.write('fullname=' + result['fullname'] + '\n')
-        tokenfile.close()
-        print APP_NAME + ' has been setup for user ' + result['username']
-
-def getbloglist(token):
-    parameters = { 'method':'flickr.blogs.getList', 'api_key':API_KEY, 'auth_token':token }
-    frobxml = utils.get(URL_REST, parameters)['data']
-    xmldoc = parseString(frobxml)
-
-    result = {}
-    if not xmldoc.getElementsByTagName('token') == []:
-        result['token'] = xmldoc.getElementsByTagName('token')[0].firstChild.nodeValue
-    if not xmldoc.getElementsByTagName('err') == []:
-        result['err'] = xmldoc.getElementsByTagName('err')[0].getAttribute('code')
-    return result
+def getbloglist():
+    blogs = flickr.blogs_getList()
+    print ElementTree.tostring(blogs)
 
 def gettokenproperties():
     try:
@@ -111,44 +38,66 @@ def gettokenproperties():
         print 'ERROR: Token file is courrpt. Please reset ' + APP_NAME
         sys.exit(1)
 
-def adduser():
-    tokenprops = gettokenproperties()
-    
-    if tokenprops:
-        print APP_NAME + ' is already cofigured for user ' + tokenprops['username']
-        sys.exit(0)
-    
-    result = getfrob()
-    result = gettoken(result['frob'])
-
 def deluser():
-    tokenprops = gettokenproperties()
-    
-    if tokenprops:
-        print 'Are you sure you want to delete user ' + tokenprops['username'] + ' ?'
-        input = raw_input('Enter Y/y to continue: ')
-        if input.lower() == 'y':
-            os.remove(TOKEN_PROP_PATH)
-            print 'Deleted user'
-        else:
-            print 'User canceled operation. Not making any changes'
+    print 'ERROR: NOT IMPLEMENTED'
+
+def uploadprogress(progress, done):
+    if done:
+        print "Done uploading"
     else:
-        print APP_NAME + ' is not configured with a user currently. No user to delete.'
+        print "At %s%%" % progress
 
 def uploadphotoset():
-    token = gettokenproperties()['token']
-    parameters = { 'api_key':API_KEY, 'auth_token':token, 'safety_level':'3', 'content_type':'0', 'hidden':'1' }
-    filename = '/Users/nullin/Desktop/dilbert.jpg'
-    respxml = utils.post(URL_UPLOAD, parameters, filename)
+    dirpath = raw_input("Path to photos folder: ")
+    
+    if not os.path.isdir(dirpath):
+        print '%s is not a valid directory' % dirpath
+        return
+    
+    setname = raw_input("Name of Photoset:")
+    if not setname:
+        print 'No photoset name specified'
+        return
+    
+    photoid_list = []
+    for root, dirs, files in os.walk(dirpath):
+        for photo in files:
+            filename = os.path.join(root, photo)
+            print 'Working on %s' % filename
+            if not filename.find('.DS_Store') == -1 or not filename.find('Thumbs.db') == -1:
+                continue
+            xmlresp = flickr.upload(filename=filename, callback=uploadprogress, format='etree')
+            print ElementTree.tostring(xmlresp)
+            photoid_list.append(xmlresp.find('photoid').text)
+    
+    photoset_id = None
+    created = False
+    sets = flickr.photosets_getList()
+    sets = sets.find('photosets').findall('photoset')
+    for photoset in sets:
+        if photoset.find('title').text == setname:
+            photoset_id = photoset['id']
+            break
 
-def listphotosets(token=None, user_id=None):
-    parameters = { 'method':'flickr.photosets.getList', 'api_key':API_KEY }
-    if token:
-        parameters['auth_token'] = token
-    if user_id:
-        parameters['user_id'] = user_id
-    respxml = utils.get(URL_REST, parameters)['data']
-    xmldoc = parseString(respxml) #should do something with the response
+    if not photoset_id:
+        print "Didn't find %s named photoset. Creating one." % setname
+        photoset = flickr.photosets_create(title=setname, primary_photo_id=photoid_list[0])
+        print ElementTree.tostring(xmlresp)
+        photoset_id = photoset.find('photoset')['id']
+        created = True
+        
+    for photo_id in photoid_list[1 if created else 0 : ]:
+        print 'Adding %s to set' % photo_id
+        xmlresp = flickr.photosets_addPhoto(photoset_id=photoset_id, photo_id=photo_id)
+        print ElementTree.tostring(xmlresp)
+
+def listphotosets():
+    sets = flickr.photosets_getList()
+    #print sets.attrib['stat']
+    #print sets.find('photosets').attrib['cancreate']
+    #set0 = sets.find('photosets').findall('photoset')[0]
+    print ElementTree.tostring(sets)
+    
 
 def parse_options(args):
     #from RBTools. update to handle our options
@@ -191,22 +140,12 @@ def parse_options(args):
     #                     "are mutually exclusive.\n")
     #    sys.exit(1)
 
-    #if options.testing_file:
-    #    if os.path.exists(options.testing_file):
-    #        fp = open(options.testing_file, "r")
-    #        options.testing_done = fp.read()
-    #        fp.close()
-    #    else:
-    #        sys.stderr.write("The testing file %s does not exist.\n" %
-    #                         options.testing_file)
-    #        sys.exit(1)
-
-    #if options.reopen and not options.rid:
-    #    sys.stderr.write("The --reopen option requires "
-    #                     "--review-request-id option.\n")
-    #    sys.exit(1)
-
     return args
+
+def adduser():
+    (token, frob) = flickr.get_token_part_one(perms=PERMS)
+    if not token: raw_input("Press ENTER after you authorized this program")
+    flickr.get_token_part_two((token, frob))
 
 def main():
     args = parse_options(sys.argv[1:])
@@ -219,8 +158,8 @@ def main():
     #Following section should only contain of operations that need 
     #a token to be present or the application to have a user
     if options.listsets:
-        listphotosets(gettokenproperties()['token'])
-        #getbloglist(gettokenproperties()['token'])
+        listphotosets()
+        getbloglist()
     
     if options.upload:
         uploadphotoset()
