@@ -38,54 +38,56 @@ def uploadphotoset():
     setname = raw_input("Name of Photoset: ")
     if not setname:
         print 'No photoset name specified'
-        return
+        setname = dirpath[dirpath.rfind(os.path.sep) + 1:]
+        print 'Using %s as Photoset name' % setname
         
     photoset_id = None
-    created = False
-    # sets = flickr.photosets_getList()
-    #     sets = sets.find('photosets').findall('photoset')
-    #     for photoset in sets:
-    #         if photoset.find('title').text == setname:
-    #             photoset_id = photoset['id']
-    #             break
+    sets = flickr.photosets_getList()
+    sets = sets.find('photosets').findall('photoset')
+    for photoset in sets:
+        if photoset.find('title').text == setname:
+            photoset_id = photoset['id']
+            break
 
     if not photoset_id:
-        #print "Didn't find photoset named %s." % setname    
-        print "Will create a new photoset named %s." % setname    
+        print "Didn't find %s named photoset. Creating one." % setname
 
-    # photoid_list = []
+    failed_photoid_list = []
     for root, dirs, files in os.walk(dirpath):
         for photo in files:
             filename = os.path.join(root, photo)
             if not filename.find('.DS_Store') == -1 or not filename.find('Thumbs.db') == -1:
                 continue
-            sys.stdout.write('Uploading ' + filename + ' ')
-            xmlresp = flickr.upload(filename=filename, callback=uploadprogress, format='etree')
-            #print ElementTree.tostring(xmlresp)
-            print "Uploaded"
-            photo_id = xmlresp.find('photoid').text
-            # photoid_list.append(photo_id)
-            
+            i = 0
+            uploaded = False
+            while i < 3 and not uploaded:
+                try:
+                    sys.stdout.write('Uploading ' + filename + ' ')
+                    xmlresp = flickr.upload(filename=filename, callback=uploadprogress, format='etree')
+                    #print ElementTree.tostring(xmlresp)
+                    print "Uploaded"
+                    uploaded = True
+                    photo_id = xmlresp.find('photoid').text
+                except:
+                    i = i + 1
+                    print "Hit Error. Retrying..."
+
+            if not uploaded:
+                failed_photoid_list.append(filename)
+
             #create photoset if needed
             if not photoset_id:
-                print "Didn't find %s named photoset. Creating one." % setname
                 photoset_id = createPhotoSet(setname, photo_id)
-                created = True
             else:
                 #add photo to photoset
                 addPhotoToSet(photo_id, photoset_id)
 
-    # if not photoset_id:
-    #         print "Didn't find %s named photoset. Creating one." % setname
-    #         photoset = flickr.photosets_create(title=setname, primary_photo_id=photoid_list[0])
-    #         print ElementTree.tostring(photoset)
-    #         photoset_id = photoset.find('photoset').attrib['id']
-    #         created = True
-    #         
-    #     for photo_id in photoid_list[1 if created else 0 : ]:
-    #         print 'Adding %s to set' % photo_id
-    #         xmlresp = flickr.photosets_addPhoto(photoset_id=photoset_id, photo_id=photo_id)
-    #         print ElementTree.tostring(xmlresp)
+    if len(failed_photoid_list) > 0:
+        print "Failed to upload %s photos" % len(failed_photoid_list)
+        print "Failed photos: %s" % str(failed_photoid_list)
+    else:
+        print 'Yay! Done uploading photos'
+
 def createPhotoSet(setname, photo_id):
     photoset = flickr.photosets_create(title=setname, primary_photo_id=photo_id)
     print "Photoset created"
